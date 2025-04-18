@@ -71,7 +71,7 @@ class MalariaDataset(Dataset):
                 annotation_file_path = os.path.join(self.image_dir,dir_name,"GT",f"{image_name}.txt")
 
                 #获取图片尺寸
-                self.image_sizes.append((int(w),int(h)))
+                self.image_sizes.append((int(h),int(w)))
                 self.image_files.append(image_file_path)
                 self.annotation_files.append(annotation_file_path)
 
@@ -85,11 +85,11 @@ class MalariaDataset(Dataset):
         power_sizes = [closest_power_of_two(size) for size in self.image_sizes]
         
         # 找到最大宽度和高度
-        max_width = max(size[0] for size in power_sizes) * self.resize_zoom
-        max_height = max(size[1] for size in power_sizes) * self.resize_zoom
+        max_width = max(size[1] for size in power_sizes) * self.resize_zoom
+        max_height = max(size[0] for size in power_sizes) * self.resize_zoom
         
         # 确保最大尺寸也是2的幂次
-        return closest_power_of_two((max_width, max_height))
+        return closest_power_of_two((max_height,max_width))
 
     def resize_image(self,image:np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray,np.ndarray]:
         """调整图片大小"""
@@ -98,8 +98,8 @@ class MalariaDataset(Dataset):
         assert type(mask) == np.ndarray
 
         new_width, new_height = self.uniform_size
-        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-        mask = cv2.resize(mask, (new_width, new_height), interpolation=cv2.INTER_NEAREST)
+        image = cv2.resize(image, (new_height,new_width), interpolation=cv2.INTER_AREA)
+        mask = cv2.resize(mask, (new_height,new_width), interpolation=cv2.INTER_NEAREST)
 
         return image, mask
     
@@ -118,6 +118,7 @@ class MalariaDataset(Dataset):
 
     def __repr__(self):
         """打印讯息"""
+        
         image_dir_info = F"image_dir : {self.image_dir}"
         dataset_path_info = F"dataset_path: {self.dataset_path}"
         len_images_info = F"len images : {len(self.image_files)}"

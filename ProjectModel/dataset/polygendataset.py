@@ -31,7 +31,7 @@ class PolygonDataset(MalariaDataset):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
-        # 创建三个掩码，分别对应三类细胞
+        # 
         with open(annotation_path,'r') as f:
             lines = f.readlines()
             mask = np.zeros((image.shape[0],image.shape[1]),dtype=np.uint8)

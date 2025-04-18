@@ -10,6 +10,7 @@ from ProjectModel import bulid_dataset
 from ProjectModel import PointDataset,PolygonDataset
 from ProjectModel import UNet_up_Resnet18
 from ProjectModel import Train,PlotResult,MalariaEvaluator
+from ProjectModel import DiceLoss,SegmentationMetric
 
 import torch.nn as nn
 import torch.optim as optim
@@ -34,33 +35,33 @@ if __name__ == '__main__':
 
     # print(train_dataset[0])
 
-    polygon_dataset_dir = ".\\NIH-NLM-ThinBloodSmearsPf\\PolygonSet"
-    # trainSet_dir = ".\\resources\\PolygonSet\\trainSet.txt"
-    # testSet_dir = ".\\resources\\PolygonSet\\testSet.txt"
+    # polygon_dataset_dir = ".\\NIH-NLM-ThinBloodSmearsPf\\PolygonSet"
+    # # trainSet_dir = ".\\resources\\PolygonSet\\trainSet.txt"
+    # # testSet_dir = ".\\resources\\PolygonSet\\testSet.txt"
 
-    # 测验数据
-    trainSet_dir = ".\\resources\\examineSet\\trainSet.txt"
-    testSet_dir = ".\\resources\\examineSet\\testSet.txt"
+    # # 测验数据
+    # trainSet_dir = ".\\resources\\examineSet\\trainSet.txt"
+    # testSet_dir = ".\\resources\\examineSet\\testSet.txt"
 
-    train_dataset = PolygonDataset(image_dir=polygon_dataset_dir,dataset_path=trainSet_dir,resize_zoom=0.7)
-    test_dataset = PolygonDataset(image_dir=polygon_dataset_dir,dataset_path=testSet_dir,resize_zoom=0.7)
+    # train_dataset = PolygonDataset(image_dir=polygon_dataset_dir,dataset_path=trainSet_dir,resize_zoom=0.7)
+    # test_dataset = PolygonDataset(image_dir=polygon_dataset_dir,dataset_path=testSet_dir,resize_zoom=0.7)
 
-    BATCH_SIZE = 1
-    train_loader = DataLoader(train_dataset,batch_size=BATCH_SIZE,shuffle=True)
-    test_loader = DataLoader(test_dataset,batch_size=BATCH_SIZE,shuffle=True)
+    # BATCH_SIZE = 1
+    # train_loader = DataLoader(train_dataset,batch_size=BATCH_SIZE,shuffle=True)
+    # test_loader = DataLoader(test_dataset,batch_size=BATCH_SIZE,shuffle=True)
 
-    DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = UNet_up_Resnet18(n_classes=2)
-    # print(type(model))
-    model.to(DEVICE)
+    # DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # model = UNet_up_Resnet18(n_classes=2)
+    # # print(type(model))
+    # model.to(DEVICE)
 
-    run_dir = ".\\resources\\runs"
-    tra = Train(model,train_loader,test_loader,run_dir=run_dir)
+    # run_dir = ".\\resources\\runs"
+    # tra = Train(model,train_loader,test_loader,run_dir=run_dir)
     
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    tra.train(num_epochs=10,optimizer=optimizer,loss_func=loss_func,save_checkpoint=True,
-              checkpoint_interval=1,save_best_model=True)
+    # loss_func = nn.CrossEntropyLoss()
+    # optimizer = optim.Adam(model.parameters(), lr=0.001)
+    # tra.train(num_epochs=10,optimizer=optimizer,loss_func=loss_func,save_checkpoint=True,
+    #           checkpoint_interval=1,save_best_model=True)
 
     # save_dir = ".\\resources\\runs\\run6\\config"
     # train_log_path = ".\\resources\\runs\\run6\\model\\trainLog.csv"
@@ -117,4 +118,35 @@ if __name__ == '__main__':
     # bulid_dataset(dataset_dir=polygon_dataset_dir,save_dir=output_dir)
 
 
+    # train_log_path = ".\\resources\\runs\\run2_20250418_093935\\model\\trainLog.csv"
+    # examine_output = ".\\resources\\runs\\run2_20250418_093935\\config\\config_examine"
+    # plot = PlotResult(train_log_path,examine_output)
+    # # plot.get_data_form_csv(train_log_path)
+    # plot.plot_loss(train_log_path,examine_output)
 
+
+    # 创建一个示例模型和数据
+    model = UNet_up_Resnet18(n_classes=2)
+    dummy_input = torch.randn(1, 3, 256, 256)  # 示例输入：1张3通道256x256的图片
+    output = model(dummy_input)
+
+    # 检查输出形状
+    print("模型输出形状：", output.shape)  # 应为 torch.Size([1, 2, 256, 256])
+
+    # 创建一个示例掩码
+    dummy_mask = torch.randint(0, 2, (1, 256, 256))  # 随机生成一个掩码
+
+    # 初始化Dice Loss
+    dice_loss = DiceLoss(num_classes=2)
+
+    # 计算损失
+    loss = dice_loss(output, dummy_mask)
+    print("Dice Loss:", loss.item())
+
+    # 计算IoU
+    output_class = torch.argmax(output, dim=1)
+    iou_metric = SegmentationMetric(num_classes=2, device=output.device)
+    iou_metric.addBatch(output_class, dummy_mask)
+    mean_iou = iou_metric.meanIntersectionOverUnion()
+    print("Mean IoU:", mean_iou.item())
+    

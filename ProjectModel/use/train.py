@@ -7,7 +7,6 @@
 """
 
 from .. import nn,torch,os,tqdm,ic,csv
-
 from .. import DataLoader, Optimizer, _LRScheduler
 from .. import( 
     Accumulator,SegmentationMetric,
@@ -15,11 +14,13 @@ from .. import(
 )
 from .. import PlotResult
 from typing import Optional
+from datetime import datetime
 
 class Train:
     """训练类, 用于管理模型的训练和测试过程"""
     def __init__(self,
                  model: nn.Module,
+                 num_classes: int,
                  train_loader: DataLoader,
                  test_loader: DataLoader,
                  val_loader: Optional[DataLoader] = None,
@@ -31,6 +32,7 @@ class Train:
         初始化 Train类
         Args:
             model (nn.Module) : 实例化后的网络模型
+            num_classes (int) : 分类数目
             train_loader (DataLoader): 训练集加载器
             test_loader (DataLoader): 测试集加载器
             val_loader (Optional[DataLoader]): 验证集数据加载器. 默认为None
@@ -38,6 +40,7 @@ class Train:
             init_type (str): 模型参数初始化类型. 默认为 'xavier'
         """
         self.model = model
+        self.num_classes = num_classes
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.val_loader = val_loader
@@ -61,7 +64,9 @@ class Train:
             self.run_dir = os.path.join(os.getcwd(), "runs")
 
         self.run_count = self._get_run_count()
-        self.run_subdir = os.path.join(self.run_dir, f"run{self.run_count + 1}")
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.run_subdir = os.path.join(self.run_dir, f"run{self.run_count + 1}_{timestamp}")
+        ic(self.run_subdir)
         os.makedirs(self.run_subdir, exist_ok=True)
 
         # 创建必要的子目录
@@ -78,7 +83,7 @@ class Train:
         
         if not os.path.exists(self.run_dir):
             return 0
-        run_dirs = [d for d in os.listdir(self.run_dir) if d.startswith("run") and os.path.isdir(os.path.join(self.run_dir, d))]
+        run_dirs = [d for d in os.listdir(self.run_dir) if d.startswith("run")]
         return len(run_dirs)
     
     def _load_checkpoint(self,
@@ -141,32 +146,43 @@ class Train:
                          train_loader:DataLoader,
                          optimizer: Optimizer,
                          loss_func,
+                         accum_iter:int = 1,
                          ):
         """训练模型 - one epoch"""
-        # 记录损失和准确率
+        """
+        训练单批次网络模型
+        Args:
+            train_loader (DataLoader): 训练集加载器
+            optimizer    (Optimizer) : 模型优化器
+            loss_func    (function)  : 损失函数
+            accum_iter   (int)       : 累计梯度次数,每 accum_iter 个 batch 更新一次参数
+        """
+        
+        # 初始化指标记录器
         metric_log = Accumulator(4)
         metric = SegmentationMetric(4,self.device)
         with tqdm(train_loader, unit="batch") as train_bar:
-            for image, mask in train_bar:
+            for i,(image, mask) in enumerate(train_bar):
                 image,mask = image.to(self.device), mask.to(self.device)
-                # 清除梯度
-                optimizer.zero_grad()
                 # 前向传播
-                y_hat = self.model(image)
+                output = self.model(image)
                 # 计算损失
-                loss = loss_func(y_hat,mask)
+                loss = loss_func(output,mask)
                 # 反向传播
                 loss.backward()
-                optimizer.step()
+                if (i + 1) % accum_iter == 0: 
+                    optimizer.step()
+                    optimizer.zero_grad()
+
                 with torch.no_grad():
-                    y_hat_class = torch.argmax(y_hat, dim=1)
-                    metric.addBatch(y_hat_class, mask)
+                    output_class = torch.argmax(output, dim=1)
+                    metric.addBatch(output_class, mask)
                     mean_iou = metric.meanIntersectionOverUnion()
-                    metric_log.add(float(loss.sum()),image.numel(),mean_iou,1)
-                # 设置batch的平均loss和acc
+                    metric_log.add(float(loss.mean()), len(image), mean_iou, 1)
+                # 更新进度条显示
                 train_bar.set_postfix(
-                        loss = metric_log[0]/metric_log[3],
-                        iou = metric_log[2] / metric_log[3]
+                    batch_loss=float(loss.mean()),
+                    avg_iou=metric_log[2]/metric_log[3]
                 )
         # 计算平均损失
         train_loss = metric_log[0] / metric_log[3]
@@ -184,7 +200,7 @@ class Train:
               save_best_model: bool = True,
               resume_from_checkpoint:Optional[str] = None
               ):
-        """i[]
+        """
         训练模型
         Args:
             num_epochs(int): 训练的轮数
@@ -209,7 +225,7 @@ class Train:
 
         for epoch in range(start_epoch, num_epochs):
             # 计算一次训练后的loss和iou
-            train_loss, train_iou = self._train_net_epoch(self.train_loader,optimizer,loss_func)
+            train_loss, train_iou = self._train_net_epoch(self.train_loader,optimizer,loss_func,accum_iter=1)
             # 计算当前的 test/val loss 和 test iou
             self.model.eval()
             # 计算验证集的损失
@@ -218,40 +234,26 @@ class Train:
             else:
                 val_loss = evaluate_segmentation_loss(self.model, self.test_loader, loss_func, self.device)
             # 计算测试集的IoU
-            test_iou = evaluate_segmentation_iou(self.model, self.test_loader, self.model.n_classes, self.device)
+            test_iou = evaluate_segmentation_iou(self.model, self.test_loader, self.num_classes, self.device)
             # 更新学习率
             current_lr = optimizer.param_groups[0]['lr']
             if scheduler is not None:
                 scheduler.step(val_loss)
-            print(f"Epoch {epoch}, Train Loss: {train_loss:.5f}, Train Acc: {train_iou:.5f}, Val Loss: {val_loss:.5f}, Test Acc: {test_iou:.5f}, LR: {current_lr:.5f}")
             # 存储训练数据 | 学习曲线
-            with open(self.train_log_path, mode='a', newline='') as file:
-                writer = csv.writer(file)
-                if epoch == 0:
-                    writer.writerow(['Epoch', 'Train Loss', 'Train Acc', 'Val Loss', 'Test Acc', 'LR'])
-                writer.writerow([epoch, f"{train_loss:.5f}", f"{train_iou:.5f}", f"{val_loss:.5f}", f"{test_iou:.3f}",f'{current_lr:.6f}'])
+            self._save_train_learn_data(epoch,train_loss,train_iou,val_loss,test_iou,current_lr)
             # 保存最佳模型
-            if test_iou > self.best_test_iou:
-                self.best_test_iou = test_iou
-                torch.save(self.model.state_dict(), self.best_model_path)
-                print(f'已保存当前最佳模型, Best Test IoU: {self.best_test_iou:.4f}')
+            if save_best_model:
+                self._save_best_model(self.best_model_path,test_iou)
             # 保存检查点
-            if save_checkpoint:
-                checkpoint = {
-                    "epoch": epoch + 1,
-                    "model_state_dict": self.model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
-                    "best_test_iou": self.best_test_iou,
-                }
-                torch.save(checkpoint, self.checkpoint_path)
-                print(f'保存checkpoint成功, After Epoch {epoch+1}')
-
-            # 每5个epoch绘制一次训练曲线
-            if (epoch + 1) % checkpoint_interval == 0:
+            if save_checkpoint and (epoch + 1) % checkpoint_interval == 0:
+                self._save_checkpoint(self.checkpoint_path,epoch+1,optimizer,scheduler)
+            # 每 2 个epoch绘制一次训练曲线
+            if (epoch + 1) % 2 == 0:
                 self.save_train_data(epoch)
+
         # 最后保存训练数据
         self.save_train_data(epoch)
+
         print("训练完成了！😊🎉ヾ(≧▽≦*)o")
 
     def save_train_data(self,epoch):
@@ -263,9 +265,42 @@ class Train:
         plot = PlotResult(train_log_path=self.train_log_path,save_dir=self.trainResult_save_dir)
 
         plot.plotAll()
-        plot.compute_and_plot_confusion_matrix(epoch,self.model,self.test_loader,self.device)
+        plot.compute_and_plot_confusion_matrix(epoch,self.num_classes,self.model,self.test_loader,self.device)
 
-    
+    def _save_train_learn_data(self,epoch:int, train_loss:float, train_iou:float,val_loss:float,test_iou:float,current_lr:float):
+        """
+        存储 训练学习数据 | 绘制学习曲线
+        Args:
+            epoch       (int)    : 当前训练批次
+            train_loss  (float)  : 训练损失
+            train_iou   (float)  : 训练Iou
+            val_loss    (float)  : 验证损失
+            test_iou    (float)  : 测试iou
+            current_lr  (float)  : 当前学习率
+        """
+        with open(self.train_log_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            if epoch == 0:
+                writer.writerow(['Epoch', 'Train Loss', 'Train Acc', 'Val Loss', 'Test Acc', 'LR'])
+            
+            writer.writerow([epoch, f"{train_loss:.5f}", f"{train_iou:.5f}", f"{val_loss:.5f}", f"{test_iou:.3f}",f'{current_lr:.6f}'])
+        
+        print(f"Epoch {epoch}, Train Loss: {train_loss:.5f}, Train Acc: {train_iou:.5f}, Val Loss: {val_loss:.5f}, Test Acc: {test_iou:.5f}, LR: {current_lr:.5f}")
+            
+
+    def _save_best_model(self,path:str, test_iou: float):
+        """ 
+        保存最佳模型
+        Args:
+            path (str): 最佳模型存储路径
+            test_iou (float) : 当前训练后计算得出的iou
+        """
+        if test_iou > self.best_test_iou:
+            self.best_test_iou = test_iou
+            torch.save(self.model.state_dict(), path)
+            print(f'已保存当前最佳模型, Best Test IoU: {self.best_test_iou:.4f}')
+        
+
     def _save_checkpoint(self, path: str, epoch: int, optimizer: Optimizer, scheduler: Optional[_LRScheduler]):
         """
         保存训练检查点。
@@ -287,21 +322,3 @@ class Train:
             }
             torch.save(checkpoint, path)
             print(f"Checkpoint saved to {path}")
-
-    def _save_metrics(self, train_losses: list, val_losses: list, val_accuracies: list):
-        """
-        保存训练指标。
-
-        Args:
-            train_losses (list): 训练损失列表。
-            val_losses (list): 验证损失列表。
-            val_accuracies (list): 验证准确率列表。
-        """
-        if self.run_dir is not None:
-            metrics = {
-                'train_losses': train_losses,
-                'val_losses': val_losses,
-                'val_accuracies': val_accuracies
-            }
-            torch.save(metrics, os.path.join(self.run_dir, "training_metrics.pth"))
-            print(f"Training metrics saved to {self.run_dir}")

@@ -41,9 +41,10 @@ from .utils.Evaluator.baseEvaluator import (
 )
 from .utils.Evaluator.plot_result import PlotResult
 from .utils.Evaluator.MalariaEvaluator import MalariaEvaluator
-
+from .utils.lossfunction import DiceLoss
 
 from .block.ResNet import resnet18
 from .net.Unet_up_ResNext import UNet_up_Resnet18
+from .net.UNet import Unet
 from .use.train import Train
 

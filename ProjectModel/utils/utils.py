@@ -47,3 +47,4 @@ def _(dct: dict) -> dict:
 def _(obj: Union[str, int, float]) -> Union[str, int, float]:
     """直接返回 Python 基本类型"""
     return obj
+ 

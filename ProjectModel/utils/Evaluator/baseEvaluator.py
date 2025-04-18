@@ -119,7 +119,7 @@ def evaluate_segmentation_loss(net, data_iter, loss_func, device=None):
             image,mask = image.to(device), mask.to(device)
             y_hat = net(image)
             loss = loss_func(y_hat, mask)
-            metric.add(float(loss.sum()), 1)
+            metric.add(float(loss.mean()), 1)
     return metric[0] / metric[1]
 
 def evaluate_segmentation_iou(net, data_iter, num_classes, device=None):
@@ -142,3 +142,4 @@ def evaluate_segmentation_iou(net, data_iter, num_classes, device=None):
             metric_log.add(mean_iou, 1)  # 每个batch计算一次IoU
 
     return metric_log[0] / metric_log[1]
+

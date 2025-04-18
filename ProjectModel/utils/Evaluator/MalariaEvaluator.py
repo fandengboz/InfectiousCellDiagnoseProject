@@ -17,7 +17,9 @@ class MalariaEvaluator:
     def __init__(self, num_classes:int,
                  model: nn.Module,
                  test_loader:DataLoader,
-                 device,save_dir:Optional[str]):
+                 device,
+                 save_dir:Optional[str],
+                 best_model_path:Optional[str] = None):
         
         self.num_classes = num_classes
         self.model = model
@@ -29,6 +31,10 @@ class MalariaEvaluator:
         os.makedirs(self.save_dir,exist_ok=True)
 
         self._compute_confusion_matrix()
+
+        self.best_model_path = best_model_path
+        if self.best_model_path is not None:
+            self._load_best_model(self.best_model_path)
 
     def _compute_confusion_matrix(self):
 
@@ -49,6 +55,18 @@ class MalariaEvaluator:
         imgLabel = torch.cat(imgLabel_list, dim=0)
 
         self.evaluator.addBatch(imgPredict, imgLabel)
+
+    def _load_best_model(self, model_path: str):
+        """
+        加载最佳模型
+        Args:
+            model_path: 最佳模型文件存储路径
+        """
+        try:
+            self.model.load_state_dict(torch.load(model_path))
+            print(f"Successfully loaded model from {model_path}")
+        except Exception as e:
+            print(f"Error loading model: {e}")
 
     def get_results(self) -> Dict[str, float]:
         """获取所有评估指标"""

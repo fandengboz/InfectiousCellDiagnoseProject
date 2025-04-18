@@ -5,7 +5,7 @@
 *@ author: dengbozfan
 *@ time:	2025/04/17 18:28
 """
-from ... import os,csv, plt, torch,np
+from ... import os,csv, plt, torch,np,ic
 from .baseEvaluator import SegmentationMetric
 
 class PlotResult:
@@ -36,6 +36,7 @@ class PlotResult:
                 datas.append(data)
         return zip(*datas)
     
+
     def plot_loss(self, trainLog_csv_path, save_dir=None):
         """绘制损失曲线
         
@@ -85,7 +86,7 @@ class PlotResult:
             plt.savefig(os.path.join(save_dir, 'lr.png'))
         plt.close()
     
-    def compute_and_plot_confusion_matrix(self,epoch: int, model, test_loader, device):
+    def compute_and_plot_confusion_matrix(self,epoch: int, num_classes, model, test_loader, device):
         """计算并绘制混淆矩阵"""
         # 在测试集上运行模型，获取 imgPredict 和 imgLabel
         imgPredict_list = []
@@ -105,7 +106,7 @@ class PlotResult:
         imgLabel = torch.cat(imgLabel_list, dim=0)
 
         # 计算混淆矩阵
-        metric = SegmentationMetric(num_classes=model.n_classes, device=device)
+        metric = SegmentationMetric(num_classes, device=device)
         metric.addBatch(imgPredict, imgLabel)
         confusion_matrix = metric.confusionMatrix.cpu().numpy()
 
@@ -152,7 +153,7 @@ class PlotResult:
         plt.close()
 
     def plotAll(self):
-        """绘制曲线: loss acc lr confusion matrix"""
+        """绘制曲线: loss acc lr"""
         self.plot_loss(self.train_log_path,self.save_dir)
         self.plot_acc(self.train_log_path,self.save_dir)
         self.plot_current_lr(self.train_log_path,self.save_dir)

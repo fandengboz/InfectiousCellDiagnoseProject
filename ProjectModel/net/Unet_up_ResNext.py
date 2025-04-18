@@ -97,4 +97,4 @@ class UNet_up_Resnet18(nn.Module):
         end_dec = self.enddec(torch.cat([self.invertpre(d1),x],dim=1))
         out = self.final(end_dec)
 
-        return torch.softmax(out, dim=1)
+        return out
